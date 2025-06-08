@@ -65,7 +65,7 @@ def get_recipes_by_matching_ingredients(user_ingredients, max_recipes=10):
 if 'saved_main_recipes' not in st.session_state:
     st.session_state.saved_main_recipes = []
 
-st.title("🍳 Experiência Cheff - Descubra Novas Receitas Através dos Ingredientes")
+st.title("🍳 Experiência Chef - Descubra Novas Receitas Através dos Ingredientes")
 st.markdown("Conheça receitas diferentes que combinem com os ingredientes que você tem!")
 
 user_input = st.text_input(
