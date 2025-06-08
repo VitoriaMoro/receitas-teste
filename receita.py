@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 
-# Configuração inicial do app Streamlit
 st.set_page_config(
     page_title="ChefAI - Encontre Receitas",
     page_icon="🍳",
@@ -66,7 +65,6 @@ def get_recipes_by_matching_ingredients(user_ingredients, max_recipes=10):
 if 'saved_main_recipes' not in st.session_state:
     st.session_state.saved_main_recipes = []
 
-# Interface principal
 st.title("🍳 Experiência Cheff - Descubra Novas Receitas Através dos Ingredientes")
 st.markdown("Conheça receitas diferentes que combinem com os ingredientes que você tem!")
 
@@ -76,7 +74,7 @@ user_input = st.text_input(
     key="ingredient_input"
 )
 
-# Barra lateral para receitas principais salvas
+# Barra lateral 
 with st.sidebar:
     st.header("📚 Receitas Principais Salvas")
     st.caption("Suas últimas receitas principais pesquisadas")
@@ -96,7 +94,7 @@ with st.sidebar:
                     st.session_state.saved_main_recipes.pop(i)
                     st.experimental_rerun()
 
-# Botão de busca
+# Botão 
 if st.button("Buscar Receitas") or user_input:
     if not user_input:
         st.warning("Por favor, digite pelo menos um ingrediente!")
@@ -233,6 +231,5 @@ if 'selected_recipe' in st.session_state:
     if st.button("Voltar para os resultados"):
         del st.session_state.selected_recipe
 
-# Rodapé
 st.markdown("---")
 st.markdown("Desenvolvido usando [TheMealDB API](https://www.themealdb.com/)")
