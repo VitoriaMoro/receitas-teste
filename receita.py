@@ -246,7 +246,6 @@ st.markdown("Desenvolvido com ❤️ usando Python, Streamlit e TheMealDB API")
 # Sidebar com informações adicionais
 with st.sidebar:
     st.header("Sobre o Chef Virtual")
-    st.markdown("""
-    Este aplicativo ajuda você a encontrar receitas com base nos ingredientes que você tem disponível.
+    
     
     
