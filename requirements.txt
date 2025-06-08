@@ -2,3 +2,4 @@ streamlit
 requests
 lru_cache
 time
+deep-translator
