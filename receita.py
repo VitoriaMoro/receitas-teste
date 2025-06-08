@@ -1,23 +1,19 @@
+# app.py
 import streamlit as st
 import requests
-from translate import Translator
+from googletrans import Translator
 
 # Configuração do tradutor
-translator_pt_to_en = Translator(from_lang="pt", to_lang="en")
-translator_en_to_pt = Translator(from_lang="en", to_lang="pt")
+translator = Translator()
 
 def translate_ingredients(ingredients, src='pt', dest='en'):
     """Traduz lista de ingredientes para o inglês"""
     translated = []
     for ing in ingredients:
         try:
-            if src == 'pt' and dest == 'en':
-                t = translator_pt_to_en.translate(ing.strip())
-            else:
-                t = translator_en_to_pt.translate(ing.strip())
-            translated.append(t.lower())
-        except Exception as e:
-            st.warning(f"Erro na tradução: {e}")
+            t = translator.translate(ing.strip(), src=src, dest=dest)
+            translated.append(t.text.lower())
+        except:
             translated.append(ing.strip().lower())
     return translated
 
@@ -27,8 +23,9 @@ def translate_recipe_details(recipe, recipe_ingredients, src='en', dest='pt'):
     
     # Traduz nome da receita
     try:
-        if src == 'en' and dest == 'pt':
-            translated_recipe['strMeal'] = translator_en_to_pt.translate(recipe['strMeal'])
+        translated_recipe['strMeal'] = translator.translate(
+            recipe['strMeal'], src=src, dest=dest
+        ).text
     except:
         pass
 
@@ -39,9 +36,8 @@ def translate_recipe_details(recipe, recipe_ingredients, src='en', dest='pt'):
         translated_chunks = []
         for chunk in chunks:
             try:
-                if src == 'en' and dest == 'pt':
-                    t = translator_en_to_pt.translate(chunk)
-                    translated_chunks.append(t)
+                t = translator.translate(chunk, src=src, dest=dest)
+                translated_chunks.append(t.text)
             except:
                 translated_chunks.append(chunk)
         translated_recipe['strInstructions'] = ' '.join(translated_chunks)
@@ -52,9 +48,8 @@ def translate_recipe_details(recipe, recipe_ingredients, src='en', dest='pt'):
     translated_ingredients = []
     for ing in recipe_ingredients:
         try:
-            if src == 'en' and dest == 'pt':
-                t = translator_en_to_pt.translate(ing)
-                translated_ingredients.append(t.lower())
+            t = translator.translate(ing, src=src, dest=dest)
+            translated_ingredients.append(t.text.lower())
         except:
             translated_ingredients.append(ing)
 
@@ -70,15 +65,14 @@ def get_recipe_with_max_matching_ingredients(user_ingredients):
         try:
             response = requests.get(
                 f"https://www.themealdb.com/api/json/v1/1/filter.php?i={ingredient}",
-                timeout=10
+                timeout=5
             )
             if response.status_code == 200:
                 data = response.json()
                 if data.get('meals'):
                     for meal in data['meals']:
                         recipe_ids.add(meal['idMeal'])
-        except Exception as e:
-            st.warning(f"Erro na busca: {e}")
+        except:
             continue
 
     if not recipe_ids:
@@ -94,30 +88,27 @@ def get_recipe_with_max_matching_ingredients(user_ingredients):
         try:
             response = requests.get(
                 f"https://www.themealdb.com/api/json/v1/1/lookup.php?i={recipe_id}",
-                timeout=10
+                timeout=5
             )
             if response.status_code == 200:
-                recipe_data = response.json().get('meals', [])
-                if recipe_data:
-                    recipe_data = recipe_data[0]
-                    
-                    # Extrai ingredientes
-                    recipe_ingredients = []
-                    for i in range(1, 21):
-                        ingredient = recipe_data.get(f'strIngredient{i}', '')
-                        if ingredient and ingredient.strip():
-                            recipe_ingredients.append(ingredient.strip().lower())
-                    
-                    # Calcula correspondências
-                    matches = sum(1 for ing in recipe_ingredients if ing in translated_ingredients)
-                    
-                    if matches > max_matches:
-                        max_matches = matches
-                        best_recipe = recipe_data
-                        best_matched_ingredients = recipe_ingredients
-                        original_ingredients = recipe_ingredients.copy()
-        except Exception as e:
-            st.warning(f"Erro nos detalhes: {e}")
+                recipe_data = response.json()['meals'][0]
+                
+                # Extrai ingredientes
+                recipe_ingredients = []
+                for i in range(1, 21):
+                    ingredient = recipe_data.get(f'strIngredient{i}', '').strip().lower()
+                    if ingredient:
+                        recipe_ingredients.append(ingredient)
+                
+                # Calcula correspondências
+                matches = sum(1 for ing in recipe_ingredients if ing in translated_ingredients)
+                
+                if matches > max_matches:
+                    max_matches = matches
+                    best_recipe = recipe_data
+                    best_matched_ingredients = recipe_ingredients
+                    original_ingredients = recipe_ingredients.copy()
+        except:
             continue
 
     return best_recipe, best_matched_ingredients, original_ingredients, max_matches
@@ -151,9 +142,6 @@ st.markdown("""
         border-radius: 5px;
         margin: 15px 0;
     }
-    .stProgress > div > div > div > div {
-        background-color: #4CAF50;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -186,15 +174,10 @@ if st.button("Buscar Receitas 🔍"):
             
             # Exibe resultados
             st.success("Receita encontrada com sucesso!")
-            st.markdown(f"<h2 class='header'>🏆 {translated_recipe.get('strMeal', recipe['strMeal'])}</h2>", unsafe_allow_html=True)
-            
-            # Cálculo do percentual de compatibilidade
-            if len(user_ingredients) > 0:
-                match_percent = min(100, int((compatibility_score / len(user_ingredients)) * 100))
-            else:
-                match_percent = 0
+            st.markdown(f"<h2 class='header'>🏆 {translated_recipe['strMeal']}</h2>", unsafe_allow_html=True)
             
             # Barra de compatibilidade
+            match_percent = min(100, int(compatibility_score / len(user_ingredients) * 100)
             st.subheader(f"Compatibilidade: {match_percent}%")
             st.progress(match_percent / 100)
             
@@ -209,17 +192,14 @@ if st.button("Buscar Receitas 🔍"):
             st.subheader("🍽️ Ingredientes:")
             user_ingredients_en = translate_ingredients(user_ingredients)
             for i, ing in enumerate(translated_ingredients):
-                if i < len(original_ingredients):
-                    has_ingredient = original_ingredients[i] in user_ingredients_en
-                else:
-                    has_ingredient = False
+                has_ingredient = original_ingredients[i] in user_ingredients_en if i < len(original_ingredients) else False
                 icon = "✓" if has_ingredient else "✗"
                 color_class = "ingredient-match" if has_ingredient else "ingredient-miss"
                 st.markdown(f"<span class='{color_class}'>{icon} {ing.capitalize()}</span>", unsafe_allow_html=True)
             
             # Instruções
             st.subheader("📝 Instruções:")
-            instructions = translated_recipe.get('strInstructions', recipe.get('strInstructions', 'Instruções não disponíveis.'))
+            instructions = translated_recipe['strInstructions']
             st.text_area("", value=instructions, height=300)
             
             # Créditos
@@ -228,4 +208,3 @@ if st.button("Buscar Receitas 🔍"):
 # Rodapé
 st.markdown("---")
 st.markdown("Desenvolvido com ❤️ usando Python, Streamlit e TheMealDB API")
-           
