@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 
-def get_recipe_with_max_matching_ingredients(user_ingredients):
+def get_recipes_by_matching_ingredients(user_ingredients, max_recipes=10):
     recipe_ids = set()
     user_ingredients_lower = [ing.lower() for ing in user_ingredients]
     
@@ -18,13 +18,11 @@ def get_recipe_with_max_matching_ingredients(user_ingredients):
             continue
 
     if not recipe_ids:
-        return None, [], 0, 0
+        return []
 
-    best_recipe = None
-    max_matches = 0
-    best_matched_ingredients = []
+    recipes = []
     
-    for recipe_id in recipe_ids:
+    for recipe_id in list(recipe_ids)[:50]:  # Limita a 50 buscas para performance
         try:
             response = requests.get(
                 f"https://www.themealdb.com/api/json/v1/1/lookup.php?i={recipe_id}"
@@ -39,20 +37,29 @@ def get_recipe_with_max_matching_ingredients(user_ingredients):
                     recipe_ingredients.append(ingredient)
             
             matches = sum(1 for ing in recipe_ingredients if ing in user_ingredients_lower)
+            total_ingredients = len(recipe_ingredients)
             
-            if matches > max_matches or (matches == max_matches and not best_recipe):
-                max_matches = matches
-                best_recipe = recipe_data
-                best_matched_ingredients = recipe_ingredients
+            recipes.append({
+                'data': recipe_data,
+                'ingredients': recipe_ingredients,
+                'matches': matches,
+                'total': total_ingredients
+            })
         
         except (requests.exceptions.RequestException, KeyError, IndexError, TypeError):
             continue
 
-    total_ingredients = len(best_matched_ingredients) if best_recipe else 0
-    return best_recipe, best_matched_ingredients, max_matches, total_ingredients
+    # Ordena receitas por correspondência (maior primeiro)
+    recipes.sort(key=lambda x: x['matches'], reverse=True)
+    return recipes[:max_recipes]  # Retorna no máximo N receitas
 
 # Configuração do app Streamlit
-st.set_page_config(page_title="Encontre Receitas", page_icon="🍳", layout="centered")
+st.set_page_config(
+    page_title="Encontre Receitas",
+    page_icon="🍳",
+    layout="centered",
+    initial_sidebar_state="expanded"
+)
 
 st.title("🍳 ChefAI - Encontre Receitas por Ingredientes")
 st.markdown("Descubra receitas que combinam com os ingredientes que você tem!")
@@ -70,46 +77,48 @@ if st.button("Buscar Receitas") or user_input:
     user_ingredients = [ing.strip() for ing in user_input.split(',') if ing.strip()]
     
     with st.spinner("Procurando receitas incríveis para você..."):
-        recipe, recipe_ingredients, matches, total_ingredients = get_recipe_with_max_matching_ingredients(user_ingredients)
+        recipes = get_recipes_by_matching_ingredients(user_ingredients)
     
-    if not recipe:
+    if not recipes:
         st.error("Nenhuma receita encontrada com esses ingredientes. Tente outros ingredientes!")
     else:
-        # Mostrar estatísticas de compatibilidade
-        st.success(f"🎯 **Compatibilidade:** {matches}/{total_ingredients} ingredientes")
-        st.progress(matches / total_ingredients if total_ingredients > 0 else 0)
+        st.success(f"🔍 Encontradas {len(recipes)} receitas!")
         
-        # Card da receita
-        st.subheader(f"🏆 {recipe['strMeal']}")
+        # Cria abas para cada receita
+        tabs = st.tabs([f"Receita #{i+1}" for i in range(len(recipes))])
         
-        col1, col2 = st.columns(2)
-        if recipe.get('strSource'):
-            col1.markdown(f"🔗 [Receita Original]({recipe['strSource']})")
-        if recipe.get('strYoutube'):
-            col2.markdown(f"📺 [Vídeo no YouTube]({recipe['strYoutube']})")
-        
-        # Ingredientes com indicadores
-        st.subheader("🍽️ Ingredientes:")
-        for ing in recipe_ingredients:
-            match_indicator = "✅" if ing in [i.lower() for i in user_ingredients] else "❌"
-            st.markdown(f"{match_indicator} {ing.capitalize()}")
-        
-        # Instruções
-        st.subheader("📝 Instruções:")
-        st.write(recipe['strInstructions'])
-        
-        # Categoria e área
-        if recipe.get('strCategory') or recipe.get('strArea'):
-            st.caption(f"🗂️ Categoria: {recipe.get('strCategory', 'N/A')} | 🌍 Cozinha: {recipe.get('strArea', 'N/A')}")
+        for idx, tab in enumerate(tabs):
+            recipe = recipes[idx]
+            with tab:
+                # Cabeçalho com informações básicas
+                st.subheader(f"🍳 {recipe['data']['strMeal']}")
+                st.caption(f"🎯 Compatibilidade: {recipe['matches']}/{recipe['total']} ingredientes")
+                st.progress(recipe['matches'] / recipe['total'])
+                
+                # Colunas para links
+                col1, col2 = st.columns(2)
+                if recipe['data'].get('strSource'):
+                    col1.markdown(f"🔗 [Receita Original]({recipe['data']['strSource']})")
+                if recipe['data'].get('strYoutube'):
+                    col2.markdown(f"📺 [Vídeo no YouTube]({recipe['data']['strYoutube']})")
+                
+                # Ingredientes com indicadores
+                st.subheader("📋 Ingredientes:")
+                for ing in recipe['ingredients']:
+                    match_indicator = "✅" if ing in [i.lower() for i in user_ingredients] else "❌"
+                    st.markdown(f"{match_indicator} {ing.capitalize()}")
+                
+                # Instruções de preparo
+                st.subheader("👩‍🍳 Instruções:")
+                st.write(recipe['data']['strInstructions'])
+                
+                # Metadados
+                st.caption(f"🗂️ Categoria: {recipe['data'].get('strCategory', 'N/A')}")
+                st.caption(f"🌍 Cozinha: {recipe['data'].get('strArea', 'N/A')}")
 
 # Rodapé
 st.markdown("---")
 st.markdown("Desenvolvido com ❤️ usando [TheMealDB API](https://www.themealdb.com/)")
-
-# Para rodar localmente (descomente se necessário)
-# if __name__ == "__main__":
-#     import os
-#     os.system("streamlit run app.py"
     
     
     
