@@ -1,5 +1,9 @@
 import streamlit as st
 import requests
+from googletrans import Translator
+
+# Configuração do tradutor
+translator = Translator()
 
 st.set_page_config(
     page_title="ChefAI - Encontre Receitas",
@@ -7,6 +11,24 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="expanded"
 )
+
+# Função para traduzir texto
+def translate_text(text, src='pt', dest='en'):
+    try:
+        if not text.strip():
+            return text
+        translation = translator.translate(text, src=src, dest=dest)
+        return translation.text
+    except Exception as e:
+        st.error(f"Erro na tradução: {e}")
+        return text
+
+# Função para traduzir lista de ingredientes
+def translate_ingredients(ingredients, src='pt', dest='en'):
+    translated = []
+    for ing in ingredients:
+        translated.append(translate_text(ing.strip(), src, dest).lower())
+    return translated
 
 # Função para buscar receitas
 def get_recipes_by_matching_ingredients(user_ingredients, max_recipes=10):
@@ -30,7 +52,7 @@ def get_recipes_by_matching_ingredients(user_ingredients, max_recipes=10):
 
     recipes = []
     
-    for recipe_id in list(recipe_ids)[:200]:  # Limita a 50 buscas para performance
+    for recipe_id in list(recipe_ids)[:200]:  # Limita a 200 buscas para performance
         try:
             response = requests.get(
                 f"https://www.themealdb.com/api/json/v1/1/lookup.php?i={recipe_id}"
@@ -61,6 +83,34 @@ def get_recipes_by_matching_ingredients(user_ingredients, max_recipes=10):
     recipes.sort(key=lambda x: x['matches'], reverse=True)
     return recipes[:max_recipes]  # Retorna no máximo N receitas
 
+# Função para traduzir uma receita completa
+def translate_recipe(recipe):
+    # Traduz campos principais
+    translated_data = {
+        'strMeal': translate_text(recipe['data']['strMeal'], src='en', dest='pt'),
+        'strInstructions': translate_text(recipe['data']['strInstructions'], src='en', dest='pt'),
+        'strCategory': translate_text(recipe['data'].get('strCategory', ''), src='en', dest='pt'),
+        'strArea': translate_text(recipe['data'].get('strArea', ''), src='en', dest='pt'),
+    }
+    
+    # Mantém campos originais que não precisam de tradução
+    for key in ['strSource', 'strYoutube', 'idMeal']:
+        if key in recipe['data']:
+            translated_data[key] = recipe['data'][key]
+    
+    # Traduz lista de ingredientes
+    translated_ingredients = [
+        translate_text(ing, src='en', dest='pt').capitalize()
+        for ing in recipe['ingredients']
+    ]
+    
+    return {
+        'data': translated_data,
+        'ingredients': translated_ingredients,
+        'matches': recipe['matches'],
+        'total': recipe['total']
+    }
+
 # Inicializar session state para armazenar receitas principais
 if 'saved_main_recipes' not in st.session_state:
     st.session_state.saved_main_recipes = []
@@ -69,7 +119,7 @@ st.title("🍳 Experiência Chef - Descubra Novas Receitas Através dos Ingredie
 st.markdown("Conheça receitas diferentes que combinem com os ingredientes que você tem!")
 
 user_input = st.text_input(
-    "Digite seus ingredientes em inglês (separados por vírgula):",
+    "Digite seus ingredientes (separados por vírgula):",
     placeholder="Ex: ovo, farinha, açúcar",
     key="ingredient_input"
 )
@@ -94,29 +144,36 @@ with st.sidebar:
                     st.session_state.saved_main_recipes.pop(i)
                     st.experimental_rerun()
 
-# Botão 
+# Botão de busca
 if st.button("Buscar Receitas") or user_input:
     if not user_input:
         st.warning("Por favor, digite pelo menos um ingrediente!")
         st.stop()
     
-    user_ingredients = [ing.strip() for ing in user_input.split(',') if ing.strip()]
+    # Traduz ingredientes para inglês
+    user_ingredients_pt = [ing.strip() for ing in user_input.split(',') if ing.strip()]
+    user_ingredients_en = translate_ingredients(user_ingredients_pt, src='pt', dest='en')
+    
+    st.info(f"Ingredientes traduzidos para busca: {', '.join(user_ingredients_en)}")
     
     with st.spinner("Procurando receitas incríveis para você..."):
-        recipes = get_recipes_by_matching_ingredients(user_ingredients)
+        recipes_en = get_recipes_by_matching_ingredients(user_ingredients_en)
     
-    if not recipes:
+    if not recipes_en:
         st.error("Nenhuma receita encontrada com esses ingredientes. Tente outros ingredientes!")
     else:
+        # Traduz receitas para português
+        recipes_pt = [translate_recipe(recipe) for recipe in recipes_en[:3]]  # Traduz apenas as 3 primeiras para performance
+        
         # Salva apenas a receita principal na session state
-        main_recipe = recipes[0]
+        main_recipe = recipes_pt[0]
         if main_recipe not in st.session_state.saved_main_recipes:
             st.session_state.saved_main_recipes.insert(0, main_recipe)
         
         # Mantém apenas as últimas 10 receitas principais
         st.session_state.saved_main_recipes = st.session_state.saved_main_recipes[:10]
         
-        st.success(f"🔍 Encontradas {len(recipes)} receitas!")
+        st.success(f"🔍 Encontradas {len(recipes_en)} receitas!")
         
         # Mostra a receita principal (maior compatibilidade)
         st.subheader("🥇 Receita Principal")
@@ -132,8 +189,8 @@ if st.button("Buscar Receitas") or user_input:
             
             st.subheader("📋 Ingredientes:")
             for ing in main_recipe['ingredients']:
-                match_indicator = "✅" if ing in [i.lower() for i in user_ingredients] else "❌"
-                st.markdown(f"{match_indicator} {ing.capitalize()}")
+                match_indicator = "✅" if translate_text(ing, src='pt', dest='en').lower() in user_ingredients_en else "❌"
+                st.markdown(f"{match_indicator} {ing}")
             
             st.subheader("👩‍🍳 Instruções:")
             st.write(main_recipe['data']['strInstructions'])
@@ -142,12 +199,12 @@ if st.button("Buscar Receitas") or user_input:
             st.caption(f"🌍 Cozinha: {main_recipe['data'].get('strArea', 'N/A')}")
         
         # Mostra mais duas opções de receitas com ingredientes e instruções
-        st.subheader("🥈 Outras Opções")
-        col1, col2 = st.columns(2)
-        
-        if len(recipes) > 1:
+        if len(recipes_pt) > 1:
+            st.subheader("🥈 Outras Opções")
+            col1, col2 = st.columns(2)
+            
             with col1:
-                recipe = recipes[1]
+                recipe = recipes_pt[1]
                 with st.expander(f"🥈 {recipe['data']['strMeal']}", expanded=True):
                     st.caption(f"🎯 Compatibilidade: {recipe['matches']}/{recipe['total']} ingredientes")
                     st.progress(recipe['matches'] / recipe['total'])
@@ -162,8 +219,8 @@ if st.button("Buscar Receitas") or user_input:
                     # Ingredientes
                     st.subheader("📋 Ingredientes:")
                     for ing in recipe['ingredients']:
-                        match_indicator = "✅" if ing in [i.lower() for i in user_ingredients] else "❌"
-                        st.markdown(f"{match_indicator} {ing.capitalize()}")
+                        match_indicator = "✅" if translate_text(ing, src='pt', dest='en').lower() in user_ingredients_en else "❌"
+                        st.markdown(f"{match_indicator} {ing}")
                     
                     # Instruções
                     st.subheader("👩‍🍳 Instruções:")
@@ -172,34 +229,34 @@ if st.button("Buscar Receitas") or user_input:
                     # Metadados
                     st.caption(f"🗂️ Categoria: {recipe['data'].get('strCategory', 'N/A')}")
                     st.caption(f"🌍 Cozinha: {recipe['data'].get('strArea', 'N/A')}")
-        
-        if len(recipes) > 2:
-            with col2:
-                recipe = recipes[2]
-                with st.expander(f"🥉 {recipe['data']['strMeal']}", expanded=True):
-                    st.caption(f"🎯 Compatibilidade: {recipe['matches']}/{recipe['total']} ingredientes")
-                    st.progress(recipe['matches'] / recipe['total'])
-                    
-                    # Links
-                    link_col1, link_col2 = st.columns(2)
-                    if recipe['data'].get('strSource'):
-                        link_col1.markdown(f"🔗 [Receita Original]({recipe['data']['strSource']})")
-                    if recipe['data'].get('strYoutube'):
-                        link_col2.markdown(f"📺 [Vídeo no YouTube]({recipe['data']['strYoutube']})")
-                    
-                    # Ingredientes
-                    st.subheader("📋 Ingredientes:")
-                    for ing in recipe['ingredients']:
-                        match_indicator = "✅" if ing in [i.lower() for i in user_ingredients] else "❌"
-                        st.markdown(f"{match_indicator} {ing.capitalize()}")
-                    
-                    # Instruções
-                    st.subheader("👩‍🍳 Instruções:")
-                    st.write(recipe['data']['strInstructions'])
-                    
-                    # Metadados
-                    st.caption(f"🗂️ Categoria: {recipe['data'].get('strCategory', 'N/A')}")
-                    st.caption(f"🌍 Cozinha: {recipe['data'].get('strArea', 'N/A')}")
+            
+            if len(recipes_pt) > 2:
+                with col2:
+                    recipe = recipes_pt[2]
+                    with st.expander(f"🥉 {recipe['data']['strMeal']}", expanded=True):
+                        st.caption(f"🎯 Compatibilidade: {recipe['matches']}/{recipe['total']} ingredientes")
+                        st.progress(recipe['matches'] / recipe['total'])
+                        
+                        # Links
+                        link_col1, link_col2 = st.columns(2)
+                        if recipe['data'].get('strSource'):
+                            link_col1.markdown(f"🔗 [Receita Original]({recipe['data']['strSource']})")
+                        if recipe['data'].get('strYoutube'):
+                            link_col2.markdown(f"📺 [Vídeo no YouTube]({recipe['data']['strYoutube']})")
+                        
+                        # Ingredientes
+                        st.subheader("📋 Ingredientes:")
+                        for ing in recipe['ingredients']:
+                            match_indicator = "✅" if translate_text(ing, src='pt', dest='en').lower() in user_ingredients_en else "❌"
+                            st.markdown(f"{match_indicator} {ing}")
+                        
+                        # Instruções
+                        st.subheader("👩‍🍳 Instruções:")
+                        st.write(recipe['data']['strInstructions'])
+                        
+                        # Metadados
+                        st.caption(f"🗂️ Categoria: {recipe['data'].get('strCategory', 'N/A')}")
+                        st.caption(f"🌍 Cozinha: {recipe['data'].get('strArea', 'N/A')}")
 
 # Mostrar receita selecionada da barra lateral
 if 'selected_recipe' in st.session_state:
@@ -218,8 +275,7 @@ if 'selected_recipe' in st.session_state:
     
     st.subheader("📋 Ingredientes:")
     for ing in recipe['ingredients']:
-        # Como não temos a lista original do usuário, mostramos sem indicadores
-        st.markdown(f"• {ing.capitalize()}")
+        st.markdown(f"• {ing}")
     
     st.subheader("👩‍🍳 Instruções:")
     st.write(recipe['data']['strInstructions'])
