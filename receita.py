@@ -62,9 +62,9 @@ def get_recipes_by_matching_ingredients(user_ingredients, max_recipes=10):
     recipes.sort(key=lambda x: x['matches'], reverse=True)
     return recipes[:max_recipes]  # Retorna no máximo N receitas
 
-# Inicializar session state para armazenar receitas
-if 'saved_recipes' not in st.session_state:
-    st.session_state.saved_recipes = []
+# Inicializar session state para armazenar receitas principais
+if 'saved_main_recipes' not in st.session_state:
+    st.session_state.saved_main_recipes = []
 
 # Interface principal
 st.title("🍳 ChefAI - Encontre Receitas por Ingredientes")
@@ -76,23 +76,24 @@ user_input = st.text_input(
     key="ingredient_input"
 )
 
-# Barra lateral para receitas salvas
+# Barra lateral para receitas principais salvas
 with st.sidebar:
-    st.header("📚 Receitas Salvas")
-    st.caption("Suas últimas 10 receitas pesquisadas")
+    st.header("📚 Receitas Principais Salvas")
+    st.caption("Suas últimas receitas principais pesquisadas")
     
-    if not st.session_state.saved_recipes:
+    if not st.session_state.saved_main_recipes:
         st.info("Nenhuma receita salva ainda. Faça uma busca para começar!")
     else:
-        for i, recipe in enumerate(st.session_state.saved_recipes):
+        for i, recipe in enumerate(st.session_state.saved_main_recipes):
             with st.expander(f"{i+1}. {recipe['data']['strMeal']}"):
                 st.caption(f"Compatibilidade: {recipe['matches']}/{recipe['total']}")
-                if st.button("Ver Receita", key=f"view_{i}"):
-                    # Armazena a receita selecionada para exibição
+                st.caption(f"🗂️ {recipe['data'].get('strCategory', 'N/A')}")
+                
+                if st.button("Ver Receita Completa", key=f"view_{i}"):
                     st.session_state.selected_recipe = recipe
+                
                 if st.button("Remover", key=f"remove_{i}"):
-                    # Remove a receita da lista de salvas
-                    st.session_state.saved_recipes.pop(i)
+                    st.session_state.saved_main_recipes.pop(i)
                     st.experimental_rerun()
 
 # Botão de busca
@@ -109,14 +110,17 @@ if st.button("Buscar Receitas") or user_input:
     if not recipes:
         st.error("Nenhuma receita encontrada com esses ingredientes. Tente outros ingredientes!")
     else:
-        # Salva as receitas na session state
-        st.session_state.saved_recipes = recipes[:10]  # Salva até 10 receitas
-        st.session_state.saved_recipes = st.session_state.saved_recipes[:10]  # Mantém apenas as 10 mais recentes
+        # Salva apenas a receita principal na session state
+        main_recipe = recipes[0]
+        if main_recipe not in st.session_state.saved_main_recipes:
+            st.session_state.saved_main_recipes.insert(0, main_recipe)
+        
+        # Mantém apenas as últimas 10 receitas principais
+        st.session_state.saved_main_recipes = st.session_state.saved_main_recipes[:10]
         
         st.success(f"🔍 Encontradas {len(recipes)} receitas!")
         
         # Mostra a receita principal (maior compatibilidade)
-        main_recipe = recipes[0]
         st.subheader("🥇 Receita Principal")
         with st.expander(f"🍳 {main_recipe['data']['strMeal']}", expanded=True):
             st.caption(f"🎯 Compatibilidade: {main_recipe['matches']}/{main_recipe['total']} ingredientes")
@@ -139,33 +143,65 @@ if st.button("Buscar Receitas") or user_input:
             st.caption(f"🗂️ Categoria: {main_recipe['data'].get('strCategory', 'N/A')}")
             st.caption(f"🌍 Cozinha: {main_recipe['data'].get('strArea', 'N/A')}")
         
-        # Mostra mais duas opções de receitas
+        # Mostra mais duas opções de receitas com ingredientes e instruções
         st.subheader("🥈 Outras Opções")
         col1, col2 = st.columns(2)
         
         if len(recipes) > 1:
             with col1:
                 recipe = recipes[1]
-                with st.expander(f"🥈 {recipe['data']['strMeal']}"):
-                    st.caption(f"Compatibilidade: {recipe['matches']}/{recipe['total']}")
+                with st.expander(f"🥈 {recipe['data']['strMeal']}", expanded=True):
+                    st.caption(f"🎯 Compatibilidade: {recipe['matches']}/{recipe['total']} ingredientes")
                     st.progress(recipe['matches'] / recipe['total'])
                     
+                    # Links
+                    link_col1, link_col2 = st.columns(2)
                     if recipe['data'].get('strSource'):
-                        st.markdown(f"🔗 [Receita Original]({recipe['data']['strSource']})")
+                        link_col1.markdown(f"🔗 [Receita Original]({recipe['data']['strSource']})")
                     if recipe['data'].get('strYoutube'):
-                        st.markdown(f"📺 [Vídeo no YouTube]({recipe['data']['strYoutube']})")
+                        link_col2.markdown(f"📺 [Vídeo no YouTube]({recipe['data']['strYoutube']})")
+                    
+                    # Ingredientes
+                    st.subheader("📋 Ingredientes:")
+                    for ing in recipe['ingredients']:
+                        match_indicator = "✅" if ing in [i.lower() for i in user_ingredients] else "❌"
+                        st.markdown(f"{match_indicator} {ing.capitalize()}")
+                    
+                    # Instruções
+                    st.subheader("👩‍🍳 Instruções:")
+                    st.write(recipe['data']['strInstructions'])
+                    
+                    # Metadados
+                    st.caption(f"🗂️ Categoria: {recipe['data'].get('strCategory', 'N/A')}")
+                    st.caption(f"🌍 Cozinha: {recipe['data'].get('strArea', 'N/A')}")
         
         if len(recipes) > 2:
             with col2:
                 recipe = recipes[2]
-                with st.expander(f"🥉 {recipe['data']['strMeal']}"):
-                    st.caption(f"Compatibilidade: {recipe['matches']}/{recipe['total']}")
+                with st.expander(f"🥉 {recipe['data']['strMeal']}", expanded=True):
+                    st.caption(f"🎯 Compatibilidade: {recipe['matches']}/{recipe['total']} ingredientes")
                     st.progress(recipe['matches'] / recipe['total'])
                     
+                    # Links
+                    link_col1, link_col2 = st.columns(2)
                     if recipe['data'].get('strSource'):
-                        st.markdown(f"🔗 [Receita Original]({recipe['data']['strSource']})")
+                        link_col1.markdown(f"🔗 [Receita Original]({recipe['data']['strSource']})")
                     if recipe['data'].get('strYoutube'):
-                        st.markdown(f"📺 [Vídeo no YouTube]({recipe['data']['strYoutube']})")
+                        link_col2.markdown(f"📺 [Vídeo no YouTube]({recipe['data']['strYoutube']})")
+                    
+                    # Ingredientes
+                    st.subheader("📋 Ingredientes:")
+                    for ing in recipe['ingredients']:
+                        match_indicator = "✅" if ing in [i.lower() for i in user_ingredients] else "❌"
+                        st.markdown(f"{match_indicator} {ing.capitalize()}")
+                    
+                    # Instruções
+                    st.subheader("👩‍🍳 Instruções:")
+                    st.write(recipe['data']['strInstructions'])
+                    
+                    # Metadados
+                    st.caption(f"🗂️ Categoria: {recipe['data'].get('strCategory', 'N/A')}")
+                    st.caption(f"🌍 Cozinha: {recipe['data'].get('strArea', 'N/A')}")
 
 # Mostrar receita selecionada da barra lateral
 if 'selected_recipe' in st.session_state:
@@ -184,7 +220,7 @@ if 'selected_recipe' in st.session_state:
     
     st.subheader("📋 Ingredientes:")
     for ing in recipe['ingredients']:
-        # Note: não temos os ingredientes originais do usuário aqui
+        # Como não temos a lista original do usuário, mostramos sem indicadores
         st.markdown(f"• {ing.capitalize()}")
     
     st.subheader("👩‍🍳 Instruções:")
@@ -193,7 +229,7 @@ if 'selected_recipe' in st.session_state:
     st.caption(f"🗂️ Categoria: {recipe['data'].get('strCategory', 'N/A')}")
     st.caption(f"🌍 Cozinha: {recipe['data'].get('strArea', 'N/A')}")
     
-    # Adiciona botão para limpar a visualização
+    # Botão para voltar
     if st.button("Voltar para os resultados"):
         del st.session_state.selected_recipe
 
