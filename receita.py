@@ -109,7 +109,7 @@ st.markdown("Desenvolvido com ❤️ usando [TheMealDB API](https://www.themeald
 # Para rodar localmente (descomente se necessário)
 # if __name__ == "__main__":
 #     import os
-#     os.system("streamlit run app.py")
+#     os.system("streamlit run app.py"
     
     
     
