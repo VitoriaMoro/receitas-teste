@@ -1,7 +1,5 @@
 import streamlit as st
 import requests
-from functools import lru_cache
-import time
 
 # Configuração inicial do app Streamlit
 st.set_page_config(
@@ -11,100 +9,58 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Cache para requisições de API (melhora desempenho)
-@lru_cache(maxsize=500)
-def get_recipe_ids_by_ingredient(ingredient):
-    try:
-        response = requests.get(
-            f"https://www.themealdb.com/api/json/v1/1/filter.php?i={ingredient.strip()}",
-            timeout=10
-        )
-        data = response.json()
-        return [meal['idMeal'] for meal in data.get('meals', [])]
-    except (requests.exceptions.RequestException, TypeError):
-        return []
-
-@lru_cache(maxsize=500)
-def get_recipe_details(recipe_id):
-    try:
-        response = requests.get(
-            f"https://www.themealdb.com/api/json/v1/1/lookup.php?i={recipe_id}",
-            timeout=10
-        )
-        return response.json()['meals'][0]
-    except (requests.exceptions.RequestException, KeyError, IndexError, TypeError):
-        return None
-
-# Função aprimorada para buscar receitas com máximo de correspondências
-def get_recipes_by_matching_ingredients(user_ingredients, max_recipes=20):
-    user_ingredients_lower = [ing.lower().strip() for ing in user_ingredients]
-    unique_ingredients = set(user_ingredients_lower)
+# Função para buscar receitas
+def get_recipes_by_matching_ingredients(user_ingredients, max_recipes=10):
+    recipe_ids = set()
+    user_ingredients_lower = [ing.lower() for ing in user_ingredients]
     
-    # Coleta todos os IDs de receitas possíveis
-    all_recipe_ids = set()
-    for ingredient in unique_ingredients:
-        ids = get_recipe_ids_by_ingredient(ingredient)
-        all_recipe_ids.update(ids)
-    
-    if not all_recipe_ids:
-        return []
-
-    # Barra de progresso
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    total_ids = min(len(all_recipe_ids), 500)
-    recipes = []
-    processed = 0
-    
-    # Processa receitas com feedback visual
-    for recipe_id in list(all_recipe_ids)[:500]:
-        recipe_data = get_recipe_details(recipe_id)
-        if not recipe_data:
+    for ingredient in user_ingredients_lower:
+        try:
+            response = requests.get(
+                f"https://www.themealdb.com/api/json/v1/1/filter.php?i={ingredient.strip()}"
+            )
+            data = response.json()
+            if data.get('meals'):
+                for meal in data['meals']:
+                    recipe_ids.add(meal['idMeal'])
+        except (requests.exceptions.RequestException, TypeError):
             continue
+
+    if not recipe_ids:
+        return []
+
+    recipes = []
+    
+    for recipe_id in list(recipe_ids)[:200]:  # Limita a 50 buscas para performance
+        try:
+            response = requests.get(
+                f"https://www.themealdb.com/api/json/v1/1/lookup.php?i={recipe_id}"
+            )
+            recipe_data = response.json()['meals'][0]
             
-        # Extrai ingredientes da receita
-        recipe_ingredients = []
-        for i in range(1, 21):
-            ingredient_key = f'strIngredient{i}'
-            if recipe_data.get(ingredient_key) and recipe_data[ingredient_key].strip():
-                ingredient = recipe_data[ingredient_key].strip().lower()
-                recipe_ingredients.append(ingredient)
-        
-        # Calcula correspondências
-        matches = sum(1 for ing in recipe_ingredients if ing in unique_ingredients)
-        total_ingredients = len(recipe_ingredients)
-        
-        # Só inclui receitas com pelo menos 2 correspondências
-        if matches >= 2:
+            recipe_ingredients = []
+            for i in range(1, 21):
+                ingredient_key = f'strIngredient{i}'
+                if recipe_data.get(ingredient_key) and recipe_data[ingredient_key].strip():
+                    ingredient = recipe_data[ingredient_key].strip().lower()
+                    recipe_ingredients.append(ingredient)
+            
+            matches = sum(1 for ing in recipe_ingredients if ing in user_ingredients_lower)
+            total_ingredients = len(recipe_ingredients)
+            
             recipes.append({
                 'data': recipe_data,
                 'ingredients': recipe_ingredients,
                 'matches': matches,
-                'total': total_ingredients,
-                'match_ratio': matches / total_ingredients if total_ingredients > 0 else 0
+                'total': total_ingredients
             })
         
-        # Atualiza progresso
-        processed += 1
-        progress = processed / total_ids
-        progress_bar.progress(min(progress, 1.0))
-        status_text.text(f"Processando receitas: {processed}/{total_ids} ({int(progress*100)}%)")
-        time.sleep(0.01)  # Para não sobrecarregar a API
-    
-    progress_bar.empty()
-    status_text.empty()
-    
-    if not recipes:
-        return []
+        except (requests.exceptions.RequestException, KeyError, IndexError, TypeError):
+            continue
 
-    # Ordena por: 1. Mais correspondências, 2. Maior proporção, 3. Menos ingredientes faltantes
-    recipes.sort(key=lambda x: (
-        -x['matches'], 
-        -x['match_ratio'], 
-        x['total'] - x['matches']
-    ))
-    
-    return recipes[:max_recipes]
+    # Ordena receitas por correspondência (maior primeiro)
+    recipes.sort(key=lambda x: x['matches'], reverse=True)
+    return recipes[:max_recipes]  # Retorna no máximo N receitas
 
 # Inicializar session state para armazenar receitas principais
 if 'saved_main_recipes' not in st.session_state:
@@ -162,13 +118,13 @@ if st.button("Buscar Receitas") or user_input:
         # Mantém apenas as últimas 10 receitas principais
         st.session_state.saved_main_recipes = st.session_state.saved_main_recipes[:10]
         
-        st.success(f"🔍 Encontradas {len(recipes)} receitas com alta compatibilidade!")
+        st.success(f"🔍 Encontradas {len(recipes)} receitas!")
         
         # Mostra a receita principal (maior compatibilidade)
         st.subheader("🥇 Receita Principal")
         with st.expander(f"🍳 {main_recipe['data']['strMeal']}", expanded=True):
             st.caption(f"🎯 Compatibilidade: {main_recipe['matches']}/{main_recipe['total']} ingredientes")
-            st.progress(main_recipe['match_ratio'])
+            st.progress(main_recipe['matches'] / main_recipe['total'])
             
             col1, col2 = st.columns(2)
             if main_recipe['data'].get('strSource'):
@@ -188,7 +144,7 @@ if st.button("Buscar Receitas") or user_input:
             st.caption(f"🌍 Cozinha: {main_recipe['data'].get('strArea', 'N/A')}")
         
         # Mostra mais duas opções de receitas com ingredientes e instruções
-        st.subheader("🥈 Outras Ótimas Opções")
+        st.subheader("🥈 Outras Opções")
         col1, col2 = st.columns(2)
         
         if len(recipes) > 1:
@@ -196,7 +152,7 @@ if st.button("Buscar Receitas") or user_input:
                 recipe = recipes[1]
                 with st.expander(f"🥈 {recipe['data']['strMeal']}", expanded=True):
                     st.caption(f"🎯 Compatibilidade: {recipe['matches']}/{recipe['total']} ingredientes")
-                    st.progress(recipe['match_ratio'])
+                    st.progress(recipe['matches'] / recipe['total'])
                     
                     # Links
                     link_col1, link_col2 = st.columns(2)
@@ -224,7 +180,7 @@ if st.button("Buscar Receitas") or user_input:
                 recipe = recipes[2]
                 with st.expander(f"🥉 {recipe['data']['strMeal']}", expanded=True):
                     st.caption(f"🎯 Compatibilidade: {recipe['matches']}/{recipe['total']} ingredientes")
-                    st.progress(recipe['match_ratio'])
+                    st.progress(recipe['matches'] / recipe['total'])
                     
                     # Links
                     link_col1, link_col2 = st.columns(2)
@@ -246,20 +202,6 @@ if st.button("Buscar Receitas") or user_input:
                     # Metadados
                     st.caption(f"🗂️ Categoria: {recipe['data'].get('strCategory', 'N/A')}")
                     st.caption(f"🌍 Cozinha: {recipe['data'].get('strArea', 'N/A')}")
-
-        # Mostrar até 5 receitas adicionais em formato compacto
-        if len(recipes) > 3:
-            st.subheader("🍽️ Mais Opções Recomendadas")
-            cols = st.columns(3)
-            for idx, recipe in enumerate(recipes[3:8]):
-                with cols[idx % 3]:
-                    with st.expander(f"{recipe['data']['strMeal']}"):
-                        st.caption(f"🎯 {recipe['matches']}/{recipe['total']} ingredientes")
-                        st.image(recipe['data']['strMealThumb'], width=100)
-                        if recipe['data'].get('strSource'):
-                            st.markdown(f"[Receita]({recipe['data']['strSource']})")
-                        if recipe['data'].get('strYoutube'):
-                            st.markdown(f"[Vídeo]({recipe['data']['strYoutube']})")
 
 # Mostrar receita selecionada da barra lateral
 if 'selected_recipe' in st.session_state:
