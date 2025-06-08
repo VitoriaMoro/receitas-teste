@@ -31,7 +31,7 @@ def get_recipes_by_matching_ingredients(user_ingredients, max_recipes=10):
 
     recipes = []
     
-    for recipe_id in list(recipe_ids)[:100]:  # Limita a 50 buscas para performance
+    for recipe_id in list(recipe_ids)[:200]:  # Limita a 50 buscas para performance
         try:
             response = requests.get(
                 f"https://www.themealdb.com/api/json/v1/1/lookup.php?i={recipe_id}"
