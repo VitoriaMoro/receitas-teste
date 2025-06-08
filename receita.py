@@ -69,7 +69,7 @@ st.title("🍳 Experiência Chef - Descubra Novas Receitas Através dos Ingredie
 st.markdown("Conheça receitas diferentes que combinem com os ingredientes que você tem!")
 
 user_input = st.text_input(
-    "Digite seus ingredientes (separados por vírgula):",
+    "Digite seus ingredientes em inglês (separados por vírgula):",
     placeholder="Ex: ovo, farinha, açúcar",
     key="ingredient_input"
 )
