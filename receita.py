@@ -294,5 +294,3 @@ if 'selected_recipe' in st.session_state:
 # Rodapé
 st.markdown("---")
 st.markdown("Desenvolvido usando [TheMealDB API](https://www.themealdb.com/)")
-    
-    
