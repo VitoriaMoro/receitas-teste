@@ -177,7 +177,11 @@ if st.button("Buscar Receitas 🔍"):
             st.markdown(f"<h2 class='header'>🏆 {translated_recipe['strMeal']}</h2>", unsafe_allow_html=True)
             
             # Barra de compatibilidade
-            match_percent = min(100, int(compatibility_score / len(user_ingredients) * 100)
+            if len(user_ingredients) > 0:
+              percentage = (compatibility_score / len(user_ingredients)) * 100
+              match_percent = min(100, int(percentage))
+            else:
+              match_percent = 0
             st.subheader(f"Compatibilidade: {match_percent}%")
             st.progress(match_percent / 100)
             
