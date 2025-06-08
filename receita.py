@@ -67,8 +67,8 @@ if 'saved_main_recipes' not in st.session_state:
     st.session_state.saved_main_recipes = []
 
 # Interface principal
-st.title("🍳 ChefAI - Encontre Receitas por Ingredientes")
-st.markdown("Descubra receitas que combinam com os ingredientes que você tem!")
+st.title("🍳 Experiência Cheff - Descubra Novas Receitas Através dos Ingredientes")
+st.markdown("Conheça receitas diferentes que combinem com os ingredientes que você tem!")
 
 user_input = st.text_input(
     "Digite seus ingredientes (separados por vírgula):",
@@ -235,6 +235,6 @@ if 'selected_recipe' in st.session_state:
 
 # Rodapé
 st.markdown("---")
-st.markdown("Desenvolvido com ❤️ usando [TheMealDB API](https://www.themealdb.com/)")
+st.markdown("Desenvolvido usando [TheMealDB API](https://www.themealdb.com/)")
     
     
