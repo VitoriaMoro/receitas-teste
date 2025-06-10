@@ -1,3 +1,3 @@
 streamlit
 deep-translator
-googletrans==3.1.0a0
+
